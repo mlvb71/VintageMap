@@ -1,6 +1,12 @@
 <?php
 require_once 'config.php';
 
+// CRITICAL: Clean output buffer to prevent whitespace before XML
+if (ob_get_level()) {
+    ob_clean();
+}
+
+header('Content-Type: application/gpx+xml');
 header('Access-Control-Allow-Origin: ' . BASE_URL);
 header('Access-Control-Allow-Credentials: true');
 
@@ -68,7 +74,6 @@ $gpx = '<?xml version="1.0" encoding="UTF-8"?>
 $latlngs = $streams['latlng']['data'];
 $altitudes = isset($streams['altitude']['data']) ? $streams['altitude']['data'] : [];
 $times = isset($streams['time']['data']) ? $streams['time']['data'] : [];
-$distances = isset($streams['distance']['data']) ? $streams['distance']['data'] : [];
 
 foreach ($latlngs as $i => $latlng) {
     $point_time = clone $start_date;
@@ -96,7 +101,6 @@ $gpx .= '
   </trk>
 </gpx>';
 
-header('Content-Type: application/gpx+xml');
 header('Content-Disposition: inline; filename="activity_' . $activity_id . '.gpx"');
 echo $gpx;
-?>
+exit;
