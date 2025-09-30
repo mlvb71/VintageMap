@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vintage Strava Route Maps</title>
+  <link rel="preconnect" href="https://cdn.maptiler.com">
+  <link rel="dns-prefetch" href="https://api.maptiler.com">
+  <script src="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.2/maptiler-sdk.umd.min.js"></script>
+  <link href="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.2/maptiler-sdk.css" rel="stylesheet">
+  <style>
+    body { margin: 0; padding: 20px; font-family: Georgia, serif; background: #f4e4c1; }
+    h1 { text-align: center; color: #654321; margin-bottom: 10px; }
+    .upload { text-align: center; padding: 20px; background: white; border: 2px solid #8b4513; border-radius: 8px; margin-bottom: 20px; position: relative; }
+    input[type="file"] { padding: 10px; border: 2px solid #8b4513; border-radius: 8px; font-size: 16px; }
+    .btn { padding: 10px 20px; background: #8b4513; color: white; border: none; border-radius: 5px; cursor: pointer; font-family: Georgia, serif; margin: 0 5px; }
+    .btn:hover { background: #654321; }
+    .btn.strava { background: #FC4C02; }
+    .btn.strava:hover { background: #e03e00; }
+    .loading { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 2px solid #8b4513; border-radius: 5px; z-index: 1000; }
+    .loading.active { display: block; }
+    #map { width: 100%; height: calc(100vh - 180px); border: 4px solid #8b4513; border-radius: 8px; position: relative; }
+    .map-btn { position: absolute; right: 10px; z-index: 1000; padding: 10px 20px; background: #8b4513; color: white; border: none; border-radius: 5px; cursor: pointer; font-family: Georgia, serif; font-size: 14px; }
+    .map-btn:hover { background: #654321; }
+    #fullscreenBtn { top: 10px; }
+    #toggleElevation { top: 60px; }
+    #toggleStats { top: 110px; }
+    #toggleLabels { top: 160px; }
+    #trailLabels { position: absolute; top: 210px; right: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px; border: 2px solid #8b4513; border-radius: 8px; max-width: 300px; max-height: 400px; overflow-y: auto; display: none; }
+    .trail-label-item { margin: 5px 0; padding: 8px; background: #f9f9f9; border: 1px solid #8b4513; border-radius: 5px; font-size: 12px; }
+    #stats { position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px 20px; border: 2px solid #8b4513; border-radius: 8px; font-size: 14px; width: 280px; display: none; }
+    #stats h3 { margin: 0 0 10px 0; color: #654321; }
+    #stats .stat-line { margin: 5px 0; color: #654321; }
+    #elevationProfile { position: absolute; bottom: 20px; right: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px; border: 2px solid #8b4513; border-radius: 8px; width: 400px; display: none; }
+    #elevationProfile h3 { margin: 0 0 10px 0; color: #654321; font-size: 16px; }
+    #elevationCanvas { width: 100%; height: 150px; background: #f9f9f9; border: 1px solid #8b4513; }
+    .strava-section { margin-top: 20px; padding-top: 20px; border-top: 2px solid #8b4513; }
+    #activitySelector { display: none; margin-top: 20px; }
+    #dateRangeSelector { margin-bottom: 15px; padding: 10px; background: #f9f9f9; border: 1px solid #8b4513; border-radius: 5px; }
+    #activityList { max-height: 300px; overflow-y: auto; border: 1px solid #8b4513; padding: 10px; background: white; border-radius: 5px; }
+    .activity-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; }
+    .activity-item:hover { background: #f0f0f0; }
+    .activity-item label { display: flex; align-items: center; cursor: pointer; }
+    .activity-item input { margin-right: 10px; }
+    @media (max-width: 768px) {
+      .map-btn { padding: 12px 24px; font-size: 16px; }
+      #elevationProfile { width: 90%; right: 5%; }
+      #stats { width: 90%; left: 5%; }
+    }
+  </style>
+</head>
+<body>
+  <h1>🗺️ Vintage Strava Route Maps</h1>
+  <p style="text-align:center;color:#654321;">Upload GPX files or connect to Strava</p>
+  
+  <div class="upload">
+    <div>
+      <input type="file" id="gpxInput" accept=".gpx" multiple>
+      <button class="btn" id="clearBtn">Clear All</button>
+    </div>
+    
+    <div class="strava-section">
+      <h3 style="color: #654321;">Connect to Strava</h3>
+      <div id="stravaButtons"></div>
+    </div>
+    
+    <div id="activitySelector">
+      <div id="dateRangeSelector">
+        <h4 style="color: #654321;">Select Date Range</h4>
+        <label>From: <input type="date" id="startDate"></label>
+        <label style="margin-left: 15px;">To: <input type="date" id="endDate"></label>
+        <button class="btn" id="loadDateRange">Load Activities</button>
+      </div>
+      <div id="activitySummary"></div>
+      <div id="activityList">Loading...</div>
+      <div style="margin-top: 10px; text-align: center;">
+        <button class="btn" id="loadSelected">Load Selected</button>
+        <button class="btn" id="selectAll">Select All</button>
+        <button class="btn" id="selectNone">Select None</button>
+      </div>
+    </div>
+  </div>
+  
+  <div class="loading" id="loadingIndicator">Processing...</div>
+  
+  <div id="map">
+    <button id="fullscreenBtn" class="map-btn">⛶ Fullscreen</button>
+    <button id="toggleElevation" class="map-btn">📈 Elevation</button>
+    <button id="toggleStats" class="map-btn">📊 Statistics</button>
+    <button id="toggleLabels" class="map-btn">🏷️ Labels</button>
+    <div id="stats">
+      <h3>Route Statistics</h3>
+      <div id="statsContent"></div>
+    </div>
+    <div id="elevationProfile">
+      <h3>Elevation Profile</h3>
+      <canvas id="elevationCanvas" width="400" height="150"></canvas>
+    </div>
+    <div id="trailLabels">
+      <div id="trailLabelsContent"></div>
+    </div>
+  </div>
+  
+  <script>
+'use strict';
+
+const StravaMapApp = (function() {
+  const CONFIG = {
+    MAX_FILES: 20,
+    MAX_ROUTES: 50,
+    COLORS: ['#8b4513', '#2d5016', '#8b0000', '#4a5d23', '#704214'],
+    API_KEY: '5PL6GenHHg90wGEdaexX',
+    MAP_STYLE: 'https://api.maptiler.com/maps/01997ab7-a217-795c-8aa0-35f8e9dcdc74/style.json?key=5PL6GenHHg90wGEdaexX',
+    EARTH_RADIUS: 6371
+  };
+  
+  const state = {
+    map: null,
+    fileData: [],
+    routes: [],
+    stats: {
+      totalDistance: 0,
+      totalClimb: 0,
+      totalDescent: 0,
+      startDate: null,
+      endDate: null
+    },
+    colorIndex: 0,
+    stravaConnected: false,
+    stravaActivities: []
+  };
+  
+  const elements = {};
+  
+  // Simple GPX Parser
+  class GPXParser {
+    constructor(xml, filename) {
+      this.xml = xml;
+      this.filename = filename;
+      this.data = {
+        coordinates: [],
+        elevations: [],
+        distances: [0],
+        totalDistance: 0,
+        climb: 0,
+        descent: 0,
+        startTime: null,
+        startDate: null,
+        endDate: null,
+        startElevation: null,
+        endElevation: null,
+        name: filename
+      };
+    }
+    
+    parse() {
+      const trackPoints = this.xml.getElementsByTagName('trkpt');
+      if (trackPoints.length === 0) {
+        throw new Error('No track points found');
+      }
+      
+      for (let i = 0; i < trackPoints.length; i++) {
+        const point = trackPoints[i];
+        const lat = parseFloat(point.getAttribute('lat'));
+        const lon = parseFloat(point.getAttribute('lon'));
+        
+        if (!isNaN(lat) && !isNaN(lon)) {
+          this.data.coordinates.push([lon, lat]);
+          
+          const eleElement = point.getElementsByTagName('ele')[0];
+          if (eleElement) {
+            const ele = parseFloat(eleElement.textContent);
+            if (!isNaN(ele)) {
+              this.data.elevations.push(ele);
+            }
+          }
+          
+          if (i === 0 || i === trackPoints.length - 1) {
+            const timeElement = point.getElementsByTagName('time')[0];
+            if (timeElement) {
+              const date = new Date(timeElement.textContent);
+              const timeStr = date.toISOString().split('T')[0];
+              if (i === 0) {
+                this.data.startDate = timeStr;
+                this.data.startTime = date.toISOString();
+              }
+              if (i === trackPoints.length - 1) {
+                this.data.endDate = timeStr;
+              }
+            }
+          }
+          
+          if (i > 0) {
+            const prev = this.data.coordinates[this.data.coordinates.length - 2];
+            const curr = this.data.coordinates[this.data.coordinates.length - 1];
+            const dist = this.calculateDistance(prev[1], prev[0], curr[1], curr[0]);
+            this.data.totalDistance += dist;
+            this.data.distances.push(this.data.totalDistance);
+          }
+        }
+      }
+      
+      // Calculate elevation changes
+      for (let i = 1; i < this.data.elevations.length; i++) {
+        const diff = this.data.elevations[i] - this.data.elevations[i-1];
+        if (diff > 0) this.data.climb += diff;
+        else this.data.descent += Math.abs(diff);
+      }
+      
+      if (this.data.elevations.length > 0) {
+        this.data.startElevation = this.data.elevations[0];
+        this.data.endElevation = this.data.elevations[this.data.elevations.length - 1];
+      }
+      
+      return this.data;
+    }
+    
+    calculateDistance(lat1, lon1, lat2, lon2) {
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return CONFIG.EARTH_RADIUS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+  }
+  
+  // Strava Integration Functions
+  aasync function loadSelectedActivities() {
+  const checkboxes = document.querySelectorAll('#activityList input:checked');
+  if (checkboxes.length === 0) {
+    alert('Please select at least one activity');
+    return;
+  }
+  
+  elements.loadingIndicator.classList.add('active');
+  elements.loadingIndicator.textContent = `Loading 0/${checkboxes.length} activities...`;
+  
+  let loaded = 0;
+  let failed = 0;
+  
+  // Process activities sequentially with delay
+  for (let i = 0; i < checkboxes.length; i++) {
+    const checkbox = checkboxes[i];
+    
+    try {
+      elements.loadingIndicator.textContent = `Loading ${i + 1}/${checkboxes.length} activities...`;
+      
+      const response = await fetch(`/VintageMap/strava-gpx.php?id=${checkbox.value}`, {
+        credentials: 'same-origin'
+      });
+      
+      if (!response.ok) throw new Error('Failed to load GPX');
+      
+      const gpxText = await response.text();
+      
+      // Check if we got valid GPX data
+      if (!gpxText.includes('<gpx') || gpxText.includes('error')) {
+        throw new Error('Invalid GPX data received');
+      }
+      
+      const xml = new DOMParser().parseFromString(gpxText, 'text/xml');
+      
+      // Check for parsing errors
+      const parserError = xml.querySelector('parsererror');
+      if (parserError) {
+        throw new Error('GPX parsing failed');
+      }
+      
+      const parser = new GPXParser(xml, checkbox.dataset.name);
+      const data = parser.parse();
+      
+      if (data.coordinates.length > 0) {
+        addRouteToMap(data);
+        loaded++;
+      }
+      
+      // Add a small delay between requests
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (error) {
+      console.error('Failed to load activity:', checkbox.dataset.name, error);
+      failed++;
+    }
+  }
+  
+  elements.loadingIndicator.classList.remove('active');
+  elements.activitySelector.style.display = 'none';
+  
+  const message = failed > 0 
+    ? `Loaded ${loaded} activities, ${failed} failed` 
+    : `Successfully loaded ${loaded} activities`;
+  alert(message);
+}
+
+  // Add route to map
+  function addRouteToMap(data) {
+    if (state.routes.length >= CONFIG.MAX_ROUTES) {
+      alert(`Maximum ${CONFIG.MAX_ROUTES} routes reached`);
+      return;
+    }
+    
+    const color = CONFIG.COLORS[state.colorIndex++ % CONFIG.COLORS.length];
+    const sourceId = `route-${Date.now()}`;
+    
+    state.map.addSource(sourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: data.coordinates
+        }
+      }
+    });
+    
+    state.map.addLayer({
+      id: sourceId,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': color,
+        'line-width': 4,
+        'line-opacity': 0.8
+      }
+    });
+    
+    state.routes.push({
+      id: sourceId,
+      color: color,
+      data: data
+    });
+    
+    state.fileData.push(data);
+    
+    // Update stats
+    state.stats.totalDistance += data.totalDistance;
+    state.stats.totalClimb += data.climb;
+    state.stats.totalDescent += data.descent;
+    
+    if (!state.stats.startDate || data.startDate < state.stats.startDate) {
+      state.stats.startDate = data.startDate;
+    }
+    if (!state.stats.endDate || data.endDate > state.stats.endDate) {
+      state.stats.endDate = data.endDate;
+    }
+    
+    // Fit bounds
+    const bounds = new maptilersdk.LngLatBounds();
+    data.coordinates.forEach(coord => bounds.extend(coord));
+    state.map.fitBounds(bounds, { padding: 50 });
+    
+    updateStats();
+    updateTrailLabels();
+  }
+  
+  function updateStats() {
+    elements.stats.style.display = 'block';
+    elements.statsContent.innerHTML = `
+      <div class="stat-line">Routes: ${state.routes.length}</div>
+      <div class="stat-line">Distance: ${state.stats.totalDistance.toFixed(2)} km</div>
+      <div class="stat-line">Climb: ${state.stats.totalClimb.toFixed(0)} m</div>
+      <div class="stat-line">Descent: ${state.stats.totalDescent.toFixed(0)} m</div>
+    `;
+  }
+  
+  function updateTrailLabels() {
+    const html = state.routes.map((route, i) => `
+      <div class="trail-label-item" style="border-left: 4px solid ${route.color}">
+        <strong>${route.data.name || `Route ${i + 1}`}</strong><br>
+        ${route.data.totalDistance.toFixed(1)}km | 
+        ↑${route.data.climb.toFixed(0)}m | 
+        ↓${route.data.descent.toFixed(0)}m
+      </div>
+    `).join('');
+    
+    elements.trailLabelsContent.innerHTML = html;
+  }
+  
+  function drawElevationProfile() {
+    const canvas = elements.elevationCanvas;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (state.fileData.length === 0) return;
+    
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    let x = 0;
+    state.fileData.forEach(data => {
+      if (data.elevations.length > 0) {
+        const step = Math.max(1, Math.floor(data.elevations.length / 100));
+        for (let i = 0; i < data.elevations.length; i += step) {
+          const y = canvas.height - (data.elevations[i] / 4000) * canvas.height;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+          x += 2;
+        }
+      }
+    });
+    
+    ctx.stroke();
+  }
+  
+  // Setup event listeners
+  function setupEventListeners() {
+    // GPX file upload
+    elements.gpxInput.addEventListener('change', (e) => {
+      Array.from(e.target.files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const xml = new DOMParser().parseFromString(event.target.result, 'text/xml');
+          const parser = new GPXParser(xml, file.name);
+          const data = parser.parse();
+          if (data.coordinates.length > 0) {
+            addRouteToMap(data);
+          }
+        };
+        reader.readAsText(file);
+      });
+    });
+    
+    // Clear button
+    elements.clearBtn.addEventListener('click', () => {
+      if (confirm('Clear all routes?')) {
+        state.routes.forEach(route => {
+          state.map.removeLayer(route.id);
+          state.map.removeSource(route.id);
+        });
+        state.routes = [];
+        state.fileData = [];
+        state.colorIndex = 0;
+        state.stats = {
+          totalDistance: 0,
+          totalClimb: 0,
+          totalDescent: 0,
+          startDate: null,
+          endDate: null
+        };
+        updateStats();
+        updateTrailLabels();
+        elements.stats.style.display = 'none';
+        elements.elevationProfile.style.display = 'none';
+        elements.trailLabels.style.display = 'none';
+      }
+    });
+    
+    // Map buttons
+    elements.fullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.getElementById('map').requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+    
+    elements.toggleElevation.addEventListener('click', () => {
+      const visible = elements.elevationProfile.style.display === 'block';
+      elements.elevationProfile.style.display = visible ? 'none' : 'block';
+      if (!visible) drawElevationProfile();
+    });
+    
+    elements.toggleStats.addEventListener('click', () => {
+      const visible = elements.stats.style.display === 'block';
+      elements.stats.style.display = visible ? 'none' : 'block';
+    });
+    
+    elements.toggleLabels.addEventListener('click', () => {
+      const visible = elements.trailLabels.style.display === 'block';
+      elements.trailLabels.style.display = visible ? 'none' : 'block';
+    });
+    
+    // Strava activity selector buttons
+    elements.loadDateRange.addEventListener('click', loadActivitiesForDateRange);
+    elements.loadSelected.addEventListener('click', loadSelectedActivities);
+    
+    elements.selectAll.addEventListener('click', () => {
+      document.querySelectorAll('#activityList input[type="checkbox"]').forEach(cb => {
+        cb.checked = true;
+      });
+    });
+    
+    elements.selectNone.addEventListener('click', () => {
+      document.querySelectorAll('#activityList input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+      });
+    });
+    
+    // Strava integration
+    updateStravaButtons();
+  }
+  
+  function updateStravaButtons() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('connected') === 'true') {
+      state.stravaConnected = true;
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
+    if (state.stravaConnected) {
+      elements.stravaButtons.innerHTML = `
+        <button class="btn strava" onclick="document.getElementById('activitySelector').style.display='block'">Select Activities</button>
+        <button class="btn" onclick="location.href='/VintageMap/strava-disconnect.php'">Disconnect</button>
+      `;
+      elements.activitySelector.style.display = 'block';
+    } else {
+      elements.stravaButtons.innerHTML = `
+        <button class="btn strava" onclick="location.href='/VintageMap/strava-auth.php'">Connect with Strava</button>
+      `;
+    }
+  }
+  
+  // Initialize
+  function init() {
+    // Cache elements
+    ['gpxInput', 'clearBtn', 'loadingIndicator', 'stats', 'statsContent',
+     'elevationProfile', 'elevationCanvas', 'trailLabels', 'trailLabelsContent',
+     'fullscreenBtn', 'toggleElevation', 'toggleStats', 'toggleLabels',
+     'stravaButtons', 'activitySelector', 'activityList', 'activitySummary',
+     'loadSelected', 'selectAll', 'selectNone', 'startDate', 'endDate',
+     'loadDateRange'].forEach(id => {
+      elements[id] = document.getElementById(id);
+    });
+    
+    initMap();
+    setupEventListeners();
+    
+    // Set default dates to June 2024 (where your activities are)
+    const today = new Date();
+    elements.startDate.value = '2024-06-01';
+    elements.endDate.value = '2024-06-30';
+  }
+  
+  return {
+    init: init
+  };
+})();
+
+// Initialize when ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', StravaMapApp.init);
+} else {
+  StravaMapApp.init();
+}
+</script>
+</body>
+</html>
