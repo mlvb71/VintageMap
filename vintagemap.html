@@ -208,7 +208,7 @@ const StravaMapApp = (function() {
       this.data = {
         coordinates: [],
         elevations: [],
-        profile: [],
+        distances: [0],
         totalDistance: 0,
         climb: 0,
         descent: 0,
@@ -227,75 +227,63 @@ const StravaMapApp = (function() {
         throw new Error('No track points found');
       }
       
-      let prevLat = null;
-      let prevLon = null;
-      let prevElevation = null;
-      let cumulativeDistance = 0;
-
       // Extract coordinates and elevation data
       for (let i = 0; i < trackPoints.length; i++) {
         const point = trackPoints[i];
         const lat = parseFloat(point.getAttribute('lat'));
         const lon = parseFloat(point.getAttribute('lon'));
-
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          if (prevLat !== null && prevLon !== null) {
-            const segmentDistance = this.calculateDistance(prevLat, prevLon, lat, lon);
-            if (Number.isFinite(segmentDistance)) {
-              cumulativeDistance += segmentDistance;
-            }
-          }
-
+        
+        if (!isNaN(lat) && !isNaN(lon)) {
           this.data.coordinates.push([lon, lat]);
-
+          
+          // Extract elevation if available
           const eleElement = point.getElementsByTagName('ele')[0];
           if (eleElement) {
             const ele = parseFloat(eleElement.textContent);
-            if (Number.isFinite(ele)) {
+            if (!isNaN(ele)) {
               this.data.elevations.push(ele);
-              this.data.profile.push({
-                distance: cumulativeDistance,
-                elevation: ele
-              });
-
-              if (prevElevation !== null) {
-                const diff = ele - prevElevation;
-                if (diff > 0) {
-                  this.data.climb += diff;
-                } else if (diff < 0) {
-                  this.data.descent += Math.abs(diff);
-                }
-              }
-
-              prevElevation = ele;
             }
           }
-
-          const timeElement = point.getElementsByTagName('time')[0];
-          if (timeElement) {
-            const date = new Date(timeElement.textContent);
-            if (!isNaN(date)) {
+          
+          // Extract time for first and last points
+          if (i === 0 || i === trackPoints.length - 1) {
+            const timeElement = point.getElementsByTagName('time')[0];
+            if (timeElement) {
+              const date = new Date(timeElement.textContent);
               const timeStr = date.toISOString().split('T')[0];
-              if (!this.data.startDate) {
+              if (i === 0) {
                 this.data.startDate = timeStr;
                 this.data.startTime = date.toISOString();
               }
-              this.data.endDate = timeStr;
+              if (i === trackPoints.length - 1) {
+                this.data.endDate = timeStr;
+              }
             }
           }
-
-          prevLat = lat;
-          prevLon = lon;
+          
+          // Calculate cumulative distance
+          if (i > 0) {
+            const prev = this.data.coordinates[this.data.coordinates.length - 2];
+            const curr = this.data.coordinates[this.data.coordinates.length - 1];
+            const dist = this.calculateDistance(prev[1], prev[0], curr[1], curr[0]);
+            this.data.totalDistance += dist;
+            this.data.distances.push(this.data.totalDistance);
+          }
         }
       }
-
-      this.data.totalDistance = cumulativeDistance;
-
-      if (this.data.profile.length > 0) {
-        this.data.startElevation = this.data.profile[0].elevation;
-        this.data.endElevation = this.data.profile[this.data.profile.length - 1].elevation;
+      
+      // Calculate elevation gain/loss
+      for (let i = 1; i < this.data.elevations.length; i++) {
+        const diff = this.data.elevations[i] - this.data.elevations[i-1];
+        if (diff > 0) this.data.climb += diff;
+        else this.data.descent += Math.abs(diff);
       }
-
+      
+      if (this.data.elevations.length > 0) {
+        this.data.startElevation = this.data.elevations[0];
+        this.data.endElevation = this.data.elevations[this.data.elevations.length - 1];
+      }
+      
       return this.data;
     }
     
@@ -839,112 +827,76 @@ const StravaMapApp = (function() {
   function drawElevationProfile() {
     const canvas = elements.elevationCanvas;
     const ctx = canvas.getContext('2d');
-
-    if (!ctx) return;
-
+    
+    // Force display to calculate dimensions properly
     const wasHidden = elements.elevationProfile.style.display === 'none';
     if (wasHidden) {
       elements.elevationProfile.style.display = 'block';
     }
-
+    
+    // Force browser to recalculate layout
     void canvas.offsetHeight;
-
-    const containerRect = elements.elevationProfile.getBoundingClientRect();
-    const canvasWidth = Math.max((containerRect.width || 600) - 40, 200);
+    
+    // Get parent container width for proper sizing
+    const container = elements.elevationProfile;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Calculate canvas dimensions (accounting for padding)
+    const canvasWidth = (containerRect.width > 0 ? containerRect.width : 600) - 40;
     const canvasHeight = 200;
 
     canvas.style.width = `${canvasWidth}px`;
     canvas.style.height = `${canvasHeight}px`;
-
     
     // Set canvas size accounting for device pixel ratio
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvasWidth * dpr;
     canvas.height = canvasHeight * dpr;
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Scale context to match device pixel ratio
     ctx.scale(dpr, dpr);
-
-    const segments = [];
-    let distanceOffset = 0;
-
-    state.routes.forEach(route => {
-      const profile = Array.isArray(route.data.profile)
-        ? route.data.profile.filter(point => Number.isFinite(point.distance) && Number.isFinite(point.elevation))
-        : [];
-
-      if (profile.length > 0) {
-        const points = profile.map(point => ({
-          distance: point.distance + distanceOffset,
-          elevation: point.elevation
-        }));
-        segments.push({ color: route.color, points });
-
-        const lastPoint = profile[profile.length - 1];
-        let routeLength = Number.isFinite(route.data.totalDistance) ? route.data.totalDistance : 0;
-        if ((!Number.isFinite(routeLength) || routeLength <= 0) && lastPoint && Number.isFinite(lastPoint.distance)) {
-          routeLength = lastPoint.distance;
-        }
-        if (Number.isFinite(routeLength)) {
-          distanceOffset += routeLength;
-        }
-      } else if (Number.isFinite(route.data.totalDistance)) {
-        distanceOffset += route.data.totalDistance;
-      }
-    });
-
-    const allPoints = segments.flatMap(segment => segment.points);
-
-    if (allPoints.length === 0) {
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Check for elevation data
+    if (state.fileData.length === 0) {
       ctx.fillStyle = '#654321';
       ctx.font = '14px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.fillText('Load activities to see elevation profile', canvasWidth / 2, canvasHeight / 2);
       return;
     }
-
-    if (allPoints.length < 2) {
-      ctx.fillStyle = '#654321';
-      ctx.font = '14px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Not enough elevation data to draw profile', canvasWidth / 2, canvasHeight / 2);
-      return;
-    }
-
-    const minElevation = Math.min(...allPoints.map(point => point.elevation));
-    const maxElevation = Math.max(...allPoints.map(point => point.elevation));
-    const maxDistance = Math.max(...allPoints.map(point => point.distance));
-
-    if (!Number.isFinite(minElevation) || !Number.isFinite(maxElevation) || !Number.isFinite(maxDistance)) {
-      ctx.fillStyle = '#654321';
-      ctx.font = '14px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Elevation data incomplete', canvasWidth / 2, canvasHeight / 2);
-      return;
-    }
-
-    if (maxDistance <= 0) {
-      ctx.fillStyle = '#654321';
-      ctx.font = '14px Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Elevation profile requires distance data', canvasWidth / 2, canvasHeight / 2);
-      return;
-    }
-
+    
+    // Define margins for axes and labels
     const margin = { top: 20, right: 30, bottom: 40, left: 60 };
     const graphWidth = canvasWidth - margin.left - margin.right;
     const graphHeight = canvasHeight - margin.top - margin.bottom;
-
-    if (graphWidth <= 0 || graphHeight <= 0) {
+    
+    // Collect all elevation and distance data from all routes
+    let allElevations = [];
+    let allDistances = [];
+    let cumulativeDistance = 0;
+    
+    state.fileData.forEach(data => {
+      if (data.elevations && data.elevations.length > 0) {
+        data.elevations.forEach((ele, i) => {
+          allElevations.push(ele);
+          const distance = cumulativeDistance + (data.distances[i] || 0);
+          allDistances.push(distance);
+        });
+        cumulativeDistance += data.totalDistance;
+      }
+    });
+    
+    // Handle case with no elevation data
+    if (allElevations.length === 0) {
+      ctx.fillStyle = '#654321';
+      ctx.font = '14px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No elevation data available', canvasWidth / 2, canvasHeight / 2);
       return;
     }
-
-    let elevationPadding = (maxElevation - minElevation) * 0.1;
-    if (!Number.isFinite(elevationPadding) || elevationPadding === 0) {
-      elevationPadding = 10;
-    }
-
     
     // Find min/max for scaling
     const minElevation = Math.min(...allElevations);
@@ -966,19 +918,17 @@ const StravaMapApp = (function() {
     }
     const elevationMin = minElevation - elevationPadding;
     const elevationMax = maxElevation + elevationPadding;
-
+    
+    // Scale functions: convert data values to canvas coordinates
     const xScale = (distance) => margin.left + (distance / maxDistance) * graphWidth;
     const yScale = (elevation) => margin.top + graphHeight - ((elevation - elevationMin) / (elevationMax - elevationMin)) * graphHeight;
-
-    ctx.fillStyle = '#fffdf7';
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    const numXGridLines = 5;
-    const numYGridLines = 5;
-
+    
+    // Draw background grid
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 1;
-
+    
+    // Vertical grid lines
+    const numXGridLines = 5;
     for (let i = 0; i <= numXGridLines; i++) {
       const x = margin.left + (i / numXGridLines) * graphWidth;
       ctx.beginPath();
@@ -986,7 +936,9 @@ const StravaMapApp = (function() {
       ctx.lineTo(x, margin.top + graphHeight);
       ctx.stroke();
     }
-
+    
+    // Horizontal grid lines
+    const numYGridLines = 5;
     for (let i = 0; i <= numYGridLines; i++) {
       const y = margin.top + (i / numYGridLines) * graphHeight;
       ctx.beginPath();
@@ -994,110 +946,109 @@ const StravaMapApp = (function() {
       ctx.lineTo(margin.left + graphWidth, y);
       ctx.stroke();
     }
-
-    ctx.fillStyle = 'rgba(139, 69, 19, 0.1)';
+    
+    // Draw elevation profile line
+    ctx.strokeStyle = '#8b4513';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    allPoints.forEach((point, index) => {
-      const x = xScale(point.distance);
-      const y = yScale(point.elevation);
-      if (index === 0) {
+    
+    allElevations.forEach((elevation, i) => {
+      const x = xScale(allDistances[i]);
+      const y = yScale(elevation);
+      
+      if (i === 0) {
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
       }
     });
-    const lastPoint = allPoints[allPoints.length - 1];
-    ctx.lineTo(xScale(lastPoint.distance), margin.top + graphHeight);
-    ctx.lineTo(xScale(allPoints[0].distance), margin.top + graphHeight);
+    
+    ctx.stroke();
+    
+    // Fill area under curve
+    ctx.fillStyle = 'rgba(139, 69, 19, 0.1)';
+    ctx.lineTo(xScale(allDistances[allDistances.length - 1]), margin.top + graphHeight);
+    ctx.lineTo(xScale(0), margin.top + graphHeight);
     ctx.closePath();
     ctx.fill();
-
-    segments.forEach(segment => {
-      if (segment.points.length < 2) return;
-      ctx.beginPath();
-      segment.points.forEach((point, index) => {
-        const x = xScale(point.distance);
-        const y = yScale(point.elevation);
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-      ctx.strokeStyle = segment.color || '#8b4513';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
-
+    
+    // Draw axes
     ctx.strokeStyle = '#654321';
     ctx.lineWidth = 2;
-
+    
+    // X-axis
     ctx.beginPath();
     ctx.moveTo(margin.left, margin.top + graphHeight);
     ctx.lineTo(margin.left + graphWidth, margin.top + graphHeight);
     ctx.stroke();
-
+    
+    // Y-axis
     ctx.beginPath();
     ctx.moveTo(margin.left, margin.top);
     ctx.lineTo(margin.left, margin.top + graphHeight);
     ctx.stroke();
-
+    
+    // Draw X-axis labels (distance in km)
     ctx.fillStyle = '#654321';
     ctx.font = '11px Georgia, serif';
     ctx.textAlign = 'center';
-
+    
     for (let i = 0; i <= numXGridLines; i++) {
       const distance = (maxDistance / numXGridLines) * i;
       const x = margin.left + (i / numXGridLines) * graphWidth;
       const y = margin.top + graphHeight + 20;
       ctx.fillText(`${distance.toFixed(1)} km`, x, y);
     }
-
+    
+    // X-axis label
     ctx.fillText('Distance', margin.left + graphWidth / 2, canvasHeight - 5);
-
+    
+    // Draw Y-axis labels (elevation in meters)
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-
+    
     for (let i = 0; i <= numYGridLines; i++) {
       const elevation = elevationMin + ((elevationMax - elevationMin) / numYGridLines) * (numYGridLines - i);
       const x = margin.left - 10;
       const y = margin.top + (i / numYGridLines) * graphHeight;
       ctx.fillText(`${Math.round(elevation)} m`, x, y);
     }
-
+    
+    // Y-axis label (rotated)
     ctx.save();
     ctx.translate(15, margin.top + graphHeight / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.fillText('Elevation', 0, 0);
     ctx.restore();
-
-    const highestPoint = allPoints.reduce((prev, current) => current.elevation > prev.elevation ? current : prev);
-    const lowestPoint = allPoints.reduce((prev, current) => current.elevation < prev.elevation ? current : prev);
-
+    
+    // Draw min/max elevation markers
+    const maxIdx = allElevations.indexOf(maxElevation);
+    const minIdx = allElevations.indexOf(minElevation);
+    
+    // Highest point marker
+    ctx.fillStyle = '#8b0000';
     ctx.font = 'bold 10px Georgia, serif';
     ctx.textAlign = 'left';
-
-    ctx.fillStyle = '#8b0000';
-    const highX = xScale(highestPoint.distance);
-    const highY = yScale(highestPoint.elevation);
+    const maxX = xScale(allDistances[maxIdx]);
+    const maxY = yScale(maxElevation);
     ctx.beginPath();
-    ctx.arc(highX, highY, 3, 0, 2 * Math.PI);
+    ctx.arc(maxX, maxY, 3, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.fillText(`▲ ${Math.round(highestPoint.elevation)}m`, highX + 5, highY - 5);
-
-    ctx.fillStyle = '#2d5016';
-    const lowX = xScale(lowestPoint.distance);
-    const lowY = yScale(lowestPoint.elevation);
-    ctx.beginPath();
-    ctx.arc(lowX, lowY, 3, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillText(`▼ ${Math.round(lowestPoint.elevation)}m`, lowX + 5, lowY + 10);
-
-    console.log(`Elevation profile drawn: ${allPoints.length} points, ${maxDistance.toFixed(1)} km`);
-  }
-
+    ctx.fillText(`▲ ${Math.round(maxElevation)}m`, maxX + 5, maxY - 5);
     
+    // Lowest point marker
+    ctx.fillStyle = '#2d5016';
+    const minX = xScale(allDistances[minIdx]);
+    const minY = yScale(minElevation);
+    ctx.beginPath();
+    ctx.arc(minX, minY, 3, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillText(`▼ ${Math.round(minElevation)}m`, minX + 5, minY + 10);
+    
+    console.log(`Elevation profile drawn: ${allElevations.length} points, ${maxDistance.toFixed(1)} km`);
+  }
+  
   // ============================================
   // EVENT LISTENERS
   // ============================================
@@ -1157,8 +1108,10 @@ const StravaMapApp = (function() {
     elements.toggleElevation.addEventListener('click', () => {
       const visible = elements.elevationProfile.style.display === 'block';
       elements.elevationProfile.style.display = visible ? 'none' : 'block';
-
-      if (!visible) {
+      
+      // Draw profile when toggled on
+      if (!visible && state.fileData.length > 0) {
+        // Small delay ensures proper canvas rendering
         setTimeout(() => drawElevationProfile(), 50);
       }
     });
