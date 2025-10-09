@@ -209,6 +209,7 @@ const StravaMapApp = (function() {
         coordinates: [],
         elevations: [],
         profile: [],
+        trackPoints: [],
         totalDistance: 0,
         climb: 0,
         descent: 0,
@@ -248,10 +249,12 @@ const StravaMapApp = (function() {
 
           this.data.coordinates.push([lon, lat]);
 
+          let elevationValue = null;
           const eleElement = point.getElementsByTagName('ele')[0];
           if (eleElement) {
             const ele = parseFloat(eleElement.textContent);
             if (Number.isFinite(ele)) {
+              elevationValue = ele;
               this.data.elevations.push(ele);
               this.data.profile.push({
                 distance: cumulativeDistance,
@@ -270,6 +273,12 @@ const StravaMapApp = (function() {
               prevElevation = ele;
             }
           }
+
+          this.data.trackPoints.push({
+            distance: cumulativeDistance,
+            elevation: Number.isFinite(elevationValue) ? elevationValue : null,
+            coordinates: [lon, lat]
+          });
 
           const timeElement = point.getElementsByTagName('time')[0];
           if (timeElement) {
@@ -766,9 +775,9 @@ const StravaMapApp = (function() {
     state.fileData.push(data);
     
     // Update cumulative statistics
-    state.stats.totalDistance += data.totalDistance;
-    state.stats.totalClimb += data.climb;
-    state.stats.totalDescent += data.descent;
+    state.stats.totalDistance += Number.isFinite(data.totalDistance) ? data.totalDistance : 0;
+    state.stats.totalClimb += Number.isFinite(data.climb) ? data.climb : 0;
+    state.stats.totalDescent += Number.isFinite(data.descent) ? data.descent : 0;
 
     const routeDay = data.startDate || data.endDate || (data.startTime ? data.startTime.split('T')[0] : null);
     if (routeDay) {
@@ -820,18 +829,78 @@ const StravaMapApp = (function() {
    * Update the trail labels panel with route information
    */
   function updateTrailLabels() {
-    const html = state.routes.map((route, i) => `
-      <div class="trail-label-item" style="border-left: 4px solid ${route.color}">
-        <strong>${route.data.name || `Route ${i + 1}`}</strong><br>
-        ${route.data.totalDistance.toFixed(1)}km | 
-        ↑${route.data.climb.toFixed(0)}m | 
-        ↓${route.data.descent.toFixed(0)}m
-      </div>
-    `).join('');
-    
+    const html = state.routes.map((route, i) => {
+      const distance = Number.isFinite(route.data.totalDistance) ? route.data.totalDistance : 0;
+      const climb = Number.isFinite(route.data.climb) ? route.data.climb : 0;
+      const descent = Number.isFinite(route.data.descent) ? route.data.descent : 0;
+
+      return `
+        <div class="trail-label-item" style="border-left: 4px solid ${route.color}">
+          <strong>${route.data.name || `Route ${i + 1}`}</strong><br>
+          ${distance.toFixed(1)}km |
+          ↑${climb.toFixed(0)}m |
+          ↓${descent.toFixed(0)}m
+        </div>
+      `;
+    }).join('');
+
     elements.trailLabelsContent.innerHTML = html;
   }
-  
+
+  function getRouteProfilePoints(routeData) {
+    if (!routeData) {
+      return [];
+    }
+
+    const fromProfile = Array.isArray(routeData.profile)
+      ? routeData.profile.map((point) => ({
+          distance: Number(point.distance),
+          elevation: Number(point.elevation)
+        }))
+      : [];
+
+    const sanitizedProfile = fromProfile
+      .filter((point) => Number.isFinite(point.distance) && Number.isFinite(point.elevation))
+      .sort((a, b) => a.distance - b.distance);
+
+    if (sanitizedProfile.length > 0) {
+      return sanitizedProfile;
+    }
+
+    const trackPoints = Array.isArray(routeData.trackPoints)
+      ? routeData.trackPoints.map((point) => ({
+          distance: Number(point.distance),
+          elevation: Number(point.elevation)
+        }))
+      : [];
+
+    return trackPoints
+      .filter((point) => Number.isFinite(point.distance) && Number.isFinite(point.elevation))
+      .sort((a, b) => a.distance - b.distance);
+  }
+
+  function getRouteDistance(routeData, profilePoints) {
+    if (Array.isArray(profilePoints) && profilePoints.length > 0) {
+      const lastPoint = profilePoints[profilePoints.length - 1];
+      if (Number.isFinite(lastPoint.distance) && lastPoint.distance > 0) {
+        return lastPoint.distance;
+      }
+    }
+
+    if (routeData && Number.isFinite(routeData.totalDistance) && routeData.totalDistance > 0) {
+      return routeData.totalDistance;
+    }
+
+    if (routeData && Array.isArray(routeData.trackPoints) && routeData.trackPoints.length > 0) {
+      const lastTrackPoint = routeData.trackPoints[routeData.trackPoints.length - 1];
+      if (lastTrackPoint && Number.isFinite(lastTrackPoint.distance) && lastTrackPoint.distance > 0) {
+        return lastTrackPoint.distance;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * FIX #2: Enhanced elevation profile with proper canvas sizing
    * Handles canvas dimensions correctly even when initially hidden
@@ -867,10 +936,9 @@ const StravaMapApp = (function() {
     const segments = [];
     let distanceOffset = 0;
 
-    state.fileData.forEach((data, index) => {
-      const profile = Array.isArray(data.profile)
-        ? data.profile.filter(point => Number.isFinite(point.distance) && Number.isFinite(point.elevation))
-        : [];
+    state.routes.forEach((route, index) => {
+      const routeData = route.data || {};
+      const profile = getRouteProfilePoints(routeData);
 
       if (profile.length > 0) {
         const points = profile.map(point => ({
@@ -878,19 +946,13 @@ const StravaMapApp = (function() {
           elevation: point.elevation
         }));
 
-        const color = state.routes[index] ? state.routes[index].color : CONFIG.COLORS[index % CONFIG.COLORS.length];
+        const color = route.color || CONFIG.COLORS[index % CONFIG.COLORS.length];
         segments.push({ color, points });
+      }
 
-        const lastPoint = profile[profile.length - 1];
-        const total = Number.isFinite(data.totalDistance) && data.totalDistance > 0
-          ? data.totalDistance
-          : (lastPoint && Number.isFinite(lastPoint.distance) ? lastPoint.distance : 0);
-
-        if (Number.isFinite(total)) {
-          distanceOffset += total;
-        }
-      } else if (Number.isFinite(data.totalDistance)) {
-        distanceOffset += data.totalDistance;
+      const segmentDistance = getRouteDistance(routeData, profile);
+      if (Number.isFinite(segmentDistance) && segmentDistance > 0) {
+        distanceOffset += segmentDistance;
       }
     });
 
