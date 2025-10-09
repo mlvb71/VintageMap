@@ -185,7 +185,8 @@ const StravaMapApp = (function() {
       totalClimb: 0,
       totalDescent: 0,
       startDate: null,
-      endDate: null
+      endDate: null,
+      days: new Set()
     },
     colorIndex: 0,
     stravaConnected: false,
@@ -409,6 +410,7 @@ const StravaMapApp = (function() {
       }
       
       const activities = await response.json();
+      activities.sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
       state.stravaActivities = activities;
       
       if (activities.length === 0) {
@@ -418,9 +420,27 @@ const StravaMapApp = (function() {
       }
       
       // Display activities with checkboxes
-      elements.activitySummary.innerHTML = `<p style="margin: 10px 0;"><strong>${activities.length} activities found</strong></p>`;
-      
-      const html = activities.map((activity, index) => {
+      const uniqueDays = new Set(
+        activities.map(activity => {
+          if (activity.start_date_local) {
+            return activity.start_date_local.split('T')[0];
+          }
+          return new Date(activity.start_date).toISOString().split('T')[0];
+        })
+      );
+
+      const dayCount = uniqueDays.size;
+      const dayLabel = dayCount === 1 ? 'day' : 'days';
+      const activityLabel = activities.length === 1 ? 'activity' : 'activities';
+
+      elements.activitySummary.innerHTML = `
+        <p style="margin: 10px 0;">
+          <strong>${dayCount} ${dayLabel} in range</strong><br>
+          <small>${activities.length} ${activityLabel} found</small>
+        </p>
+      `;
+
+      const html = activities.map((activity) => {
         const date = new Date(activity.start_date).toLocaleDateString();
         const distance = (activity.distance / 1000).toFixed(2);
         const elevation = activity.total_elevation_gain ? Math.round(activity.total_elevation_gain) : 0;
@@ -737,6 +757,11 @@ const StravaMapApp = (function() {
     state.stats.totalDistance += data.totalDistance;
     state.stats.totalClimb += data.climb;
     state.stats.totalDescent += data.descent;
+
+    const routeDay = data.startDate || data.endDate || (data.startTime ? data.startTime.split('T')[0] : null);
+    if (routeDay) {
+      state.stats.days.add(routeDay);
+    }
     
     if (!state.stats.startDate || data.startDate < state.stats.startDate) {
       state.stats.startDate = data.startDate;
@@ -768,8 +793,11 @@ const StravaMapApp = (function() {
    */
   function updateStats() {
     elements.stats.style.display = 'block';
+    const dayCount = state.stats.days ? state.stats.days.size : 0;
+
     elements.statsContent.innerHTML = `
-      <div class="stat-line">Routes: ${state.routes.length}</div>
+      <div class="stat-line">Days covered: ${dayCount}</div>
+      <div class="stat-line">Routes loaded: ${state.routes.length}</div>
       <div class="stat-line">Distance: ${state.stats.totalDistance.toFixed(2)} km</div>
       <div class="stat-line">Climb: ${state.stats.totalClimb.toFixed(0)} m</div>
       <div class="stat-line">Descent: ${state.stats.totalDescent.toFixed(0)} m</div>
@@ -816,6 +844,9 @@ const StravaMapApp = (function() {
     // Calculate canvas dimensions (accounting for padding)
     const canvasWidth = (containerRect.width > 0 ? containerRect.width : 600) - 40;
     const canvasHeight = 200;
+
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
     
     // Set canvas size accounting for device pixel ratio
     const dpr = window.devicePixelRatio || 1;
@@ -871,9 +902,20 @@ const StravaMapApp = (function() {
     const minElevation = Math.min(...allElevations);
     const maxElevation = Math.max(...allElevations);
     const maxDistance = Math.max(...allDistances);
+
+    if (!Number.isFinite(maxDistance) || maxDistance <= 0) {
+      ctx.fillStyle = '#654321';
+      ctx.font = '14px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Not enough distance data to draw profile', canvasWidth / 2, canvasHeight / 2);
+      return;
+    }
     
     // Add 10% padding to elevation range
-    const elevationPadding = (maxElevation - minElevation) * 0.1;
+    let elevationPadding = (maxElevation - minElevation) * 0.1;
+    if (!Number.isFinite(elevationPadding) || elevationPadding === 0) {
+      elevationPadding = 10; // ensure some visible range
+    }
     const elevationMin = minElevation - elevationPadding;
     const elevationMax = maxElevation + elevationPadding;
     
@@ -1043,7 +1085,8 @@ const StravaMapApp = (function() {
           totalClimb: 0,
           totalDescent: 0,
           startDate: null,
-          endDate: null
+          endDate: null,
+          days: new Set()
         };
         updateStats();
         updateTrailLabels();
