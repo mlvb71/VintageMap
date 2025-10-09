@@ -29,7 +29,39 @@
     #toggleStats { top: 110px; }
     #toggleLabels { top: 160px; }
     #toggleMapStyle { top: 210px; }
-    
+
+    .vintage-terrain-toggle {
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .terrain-toggle-button {
+      width: 32px;
+      height: 32px;
+      font-family: Georgia, serif;
+      font-weight: bold;
+      font-size: 14px;
+      border: none;
+      background: rgba(255, 255, 255, 0.95);
+      color: #654321;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .terrain-toggle-button:hover,
+    .terrain-toggle-button.is-active {
+      background: #8b4513;
+      color: #ffffff;
+    }
+
+    .terrain-toggle-button:focus {
+      outline: 2px solid #8b4513;
+      outline-offset: 1px;
+    }
+
     #trailLabels { position: absolute; top: 210px; right: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px; border: 2px solid #8b4513; border-radius: 8px; max-width: 300px; max-height: 400px; overflow-y: auto; display: none; }
     .trail-label-item { margin: 5px 0; padding: 8px; background: #f9f9f9; border: 1px solid #8b4513; border-radius: 5px; font-size: 12px; }
     #stats { position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px 20px; border: 2px solid #8b4513; border-radius: 8px; font-size: 14px; width: 280px; display: none; }
@@ -128,11 +160,16 @@ const StravaMapApp = (function() {
     // The custom style ID was not accessible - replaced with public styles
     MAP_STYLES: {
       streets: 'https://api.maptiler.com/maps/streets/style.json?key=5PL6GenHHg90wGEdaexX',
-      vintage: 'https://api.maptiler.com/maps/toner/style.json?key=5PL6GenHHg90wGEdaexX',
+      vintage: 'https://api.maptiler.com/maps/01997ab7-a217-795c-8aa0-35f8e9dcdc74/style.json?key=5PL6GenHHg90wGEdaexX',
       satellite: 'https://api.maptiler.com/maps/hybrid/style.json?key=5PL6GenHHg90wGEdaexX',
       topo: 'https://api.maptiler.com/maps/outdoor/style.json?key=5PL6GenHHg90wGEdaexX'
     },
-    
+    TERRAIN: {
+      sourceId: 'terrain-dem',
+      sourceUrl: 'https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=5PL6GenHHg90wGEdaexX',
+      exaggeration: 1.5
+    },
+
     EARTH_RADIUS: 6371
   };
   
@@ -153,7 +190,9 @@ const StravaMapApp = (function() {
     colorIndex: 0,
     stravaConnected: false,
     stravaActivities: [],
-    currentMapStyle: 'streets' // Start with streets, can toggle to vintage/satellite/topo
+    currentMapStyle: 'streets', // Start with streets, can toggle to vintage/satellite/topo
+    terrainToggleControl: null,
+    terrainEnabled: false
   };
   
   const elements = {};
@@ -288,7 +327,7 @@ const StravaMapApp = (function() {
       try {
         elements.loadingIndicator.textContent = `Loading ${i + 1}/${checkboxes.length} activities...`;
         
-        const response = await fetch(`/VintageMap/strava-gpx.php?id=${checkbox.value}`, {
+        const response = await fetch(`strava-gpx.php?id=${checkbox.value}`, {
           credentials: 'same-origin'
         });
         
@@ -361,7 +400,7 @@ const StravaMapApp = (function() {
       const after = Math.floor(startDate.getTime() / 1000);
       const before = Math.floor(endDate.getTime() / 1000) + 86400; // +1 day to include end date
       
-      const response = await fetch(`/VintageMap/strava-activities.php?after=${after}&before=${before}&per_page=200`, {
+      const response = await fetch(`strava-activities.php?after=${after}&before=${before}&per_page=200`, {
         credentials: 'same-origin'
       });
       
@@ -429,37 +468,10 @@ const StravaMapApp = (function() {
       antialias: true
     });
     
-    // Add navigation controls
-    state.map.addControl(new maptilersdk.NavigationControl(), 'top-right');
-    
-    // Enable 3D terrain after map loads
+    // Prepare terrain-related controls after the style loads
     state.map.on('load', () => {
       console.log('Map loaded successfully');
-      
-      try {
-        state.map.enableTerrain({
-          exaggeration: 1.5
-        });
-        
-        // Add terrain control
-        const terrainControl = new maptilersdk.TerrainControl({
-          source: 'terrain',
-          exaggeration: 1.5
-        });
-        state.map.addControl(terrainControl, 'top-right');
-        
-        // Auto-tilt when terrain is enabled
-        state.map.on('terrain', () => {
-          state.map.easeTo({ pitch: 65, duration: 1000 });
-        });
-        
-        // Return to flat when terrain is disabled
-        state.map.on('terrain.off', () => {
-          state.map.easeTo({ pitch: 0, duration: 1000 });
-        });
-      } catch (e) {
-        console.warn('Terrain not available:', e);
-      }
+      prepareTerrainSupport();
     });
     
     state.map.on('error', (e) => {
@@ -481,7 +493,7 @@ const StravaMapApp = (function() {
     const currentZoom = state.map.getZoom();
     const currentBearing = state.map.getBearing();
     const currentPitch = state.map.getPitch();
-    const terrainEnabled = state.map.getTerrain();
+    const wasTerrainEnabled = state.terrainEnabled;
     
     // Update button label
     const buttonLabels = {
@@ -505,14 +517,9 @@ const StravaMapApp = (function() {
         pitch: currentPitch
       });
       
-      // Re-enable terrain if it was active
-      if (terrainEnabled) {
-        try {
-          state.map.enableTerrain({ exaggeration: 1.5 });
-        } catch (e) {
-          console.warn('Could not restore terrain:', e);
-        }
-      }
+      // Re-create terrain support and restore prior state
+      state.terrainEnabled = wasTerrainEnabled;
+      prepareTerrainSupport();
       
       // Re-add all routes
       state.routes.forEach(route => {
@@ -545,6 +552,140 @@ const StravaMapApp = (function() {
       
       console.log(`Switched to ${state.currentMapStyle} style`);
     });
+  }
+
+  /**
+   * Ensure the DEM source required for terrain rendering exists
+   */
+  function ensureTerrainSource() {
+    if (!state.map.getSource(CONFIG.TERRAIN.sourceId)) {
+      try {
+        state.map.addSource(CONFIG.TERRAIN.sourceId, {
+          type: 'raster-dem',
+          url: CONFIG.TERRAIN.sourceUrl,
+          tileSize: 256,
+          maxzoom: 12
+        });
+      } catch (error) {
+        console.warn('Unable to add terrain source:', error);
+      }
+    }
+  }
+
+  /**
+   * Attach a custom terrain toggle control without duplicating default buttons
+   */
+  function ensureTerrainToggleControl() {
+    if (state.terrainToggleControl || typeof state.map.setTerrain !== 'function') {
+      return;
+    }
+
+    class TerrainToggleControl {
+      onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        this._container.className = 'vintage-terrain-toggle';
+        this._container.classList.add('maplibregl-ctrl', 'maplibregl-ctrl-group', 'maptilersdk-ctrl', 'maptilersdk-ctrl-group');
+
+        this._button = document.createElement('button');
+        this._button.type = 'button';
+        this._button.className = 'terrain-toggle-button';
+        this._button.setAttribute('aria-label', 'Toggle 3D terrain');
+        this._button.textContent = '3D';
+        this._handler = () => toggleTerrain();
+        this._button.addEventListener('click', this._handler);
+
+        this._container.appendChild(this._button);
+        return this._container;
+      }
+
+      onRemove() {
+        if (this._button && this._handler) {
+          this._button.removeEventListener('click', this._handler);
+        }
+        this._handler = undefined;
+        this._container?.remove();
+        this._map = undefined;
+      }
+    }
+
+    state.terrainToggleControl = new TerrainToggleControl();
+    state.map.addControl(state.terrainToggleControl, 'top-right');
+    updateTerrainButtonState();
+  }
+
+  /**
+   * Reflect the active terrain state in the toggle control
+   */
+  function updateTerrainButtonState() {
+    const control = state.terrainToggleControl;
+    if (!control || !control._button) return;
+
+    control._button.classList.toggle('is-active', state.terrainEnabled);
+    control._button.setAttribute('aria-pressed', state.terrainEnabled ? 'true' : 'false');
+  }
+
+  /**
+   * Apply terrain changes to the map based on the current state
+   */
+  function applyTerrainState(options = {}) {
+    if (!state.map || typeof state.map.setTerrain !== 'function') {
+      state.terrainEnabled = false;
+      updateTerrainButtonState();
+      return;
+    }
+
+    if (state.terrainEnabled) {
+      ensureTerrainSource();
+      try {
+        state.map.setTerrain({
+          source: CONFIG.TERRAIN.sourceId,
+          exaggeration: CONFIG.TERRAIN.exaggeration
+        });
+        if (typeof state.map.setFog === 'function') {
+          state.map.setFog({});
+        }
+        if (options.animate) {
+          state.map.easeTo({ pitch: Math.max(state.map.getPitch(), 60), duration: 1000 });
+        }
+      } catch (error) {
+        console.warn('Unable to enable terrain:', error);
+        state.terrainEnabled = false;
+      }
+    } else {
+      try {
+        state.map.setTerrain(null);
+        if (typeof state.map.setFog === 'function') {
+          state.map.setFog(null);
+        }
+        if (options.animate) {
+          state.map.easeTo({ pitch: 0, duration: 1000 });
+        }
+      } catch (error) {
+        console.warn('Unable to disable terrain:', error);
+      }
+    }
+
+    updateTerrainButtonState();
+  }
+
+  /**
+   * Toggle terrain state from the custom control
+   */
+  function toggleTerrain() {
+    state.terrainEnabled = !state.terrainEnabled;
+    applyTerrainState({ animate: true });
+  }
+
+  /**
+   * Prepare terrain support (source + control) without duplicating UI
+   */
+  function prepareTerrainSupport() {
+    if (!state.map) return;
+
+    ensureTerrainSource();
+    ensureTerrainToggleControl();
+    applyTerrainState();
   }
 
   /**
@@ -985,12 +1126,12 @@ const StravaMapApp = (function() {
     if (state.stravaConnected) {
       elements.stravaButtons.innerHTML = `
         <button class="btn strava" onclick="document.getElementById('activitySelector').style.display='block'">Select Activities</button>
-        <button class="btn" onclick="location.href='/VintageMap/strava-disconnect.php'">Disconnect</button>
+        <button class="btn" onclick="location.href='strava-disconnect.php'">Disconnect</button>
       `;
       elements.activitySelector.style.display = 'block';
     } else {
       elements.stravaButtons.innerHTML = `
-        <button class="btn strava" onclick="location.href='/VintageMap/strava-auth.php'">Connect with Strava</button>
+        <button class="btn strava" onclick="location.href='strava-auth.php'">Connect with Strava</button>
       `;
     }
   }
