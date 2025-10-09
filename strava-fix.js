@@ -119,7 +119,7 @@ async function loadSingleActivity(activityId) {
     }
 
     // Fetch GPX data from PHP endpoint
-    const response = await fetch(`strava-gpx.php?activity_id=${activityId}`);
+    const response = await fetch(`strava-gpx.php?id=${activityId}`);
 
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
