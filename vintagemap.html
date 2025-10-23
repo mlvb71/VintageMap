@@ -147,12 +147,11 @@
       transition: transform 0.3s ease;
     }
 
-    .map-controls.collapsed {
-      transform: translateX(-100%);
-    }
-
-    .map-controls.collapsed #toggleControlsBtn {
-      transform: translateX(calc(100% + 10px));
+    .map-controls.collapsed .map-btn:not(#toggleControlsBtn) {
+      transform: translateY(-100%);
+      opacity: 0;
+      pointer-events: none;
+      margin-top: -54px;
     }
 
     /* Map buttons - optimized for touch */
@@ -175,6 +174,7 @@
       display: block;
       width: 100%;
       text-align: left;
+      transition: transform 0.3s ease, opacity 0.3s ease, margin 0.3s ease;
     }
 
     .map-btn:active {
@@ -183,13 +183,72 @@
     }
 
     #toggleControlsBtn {
-      background: rgba(139, 69, 19, 0.9);
-      backdrop-filter: blur(5px);
+      background: rgba(139, 69, 19, 0.3);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(139, 69, 19, 0.5);
+      font-size: 18px;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+
+    #toggleControlsBtn:hover {
+      background: rgba(139, 69, 19, 0.5);
+    }
+
+    #toggleControlsBtn:active {
+      background: rgba(139, 69, 19, 0.6);
+      transform: scale(0.95);
+    }
+
+    /* Right-side controls container */
+    .map-controls-right {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
       transition: transform 0.3s ease;
     }
 
-    #toggleControlsBtn.collapsed {
-      background: var(--color-primary);
+    .map-controls-right.collapsed .maptilersdk-ctrl:not(.right-hamburger) {
+      transform: translateY(-100%);
+      opacity: 0;
+      pointer-events: none;
+      margin-top: -54px;
+    }
+
+    .right-hamburger {
+      background: rgba(139, 69, 19, 0.3) !important;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(139, 69, 19, 0.5) !important;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      border-radius: 5px;
+      padding: 0;
+      transition: background 0.3s ease;
+    }
+
+    .right-hamburger button {
+      width: 44px !important;
+      height: 44px !important;
+      background: transparent !important;
+      font-size: 18px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-white);
+    }
+
+    .right-hamburger:hover {
+      background: rgba(139, 69, 19, 0.5) !important;
+    }
+
+    .maptilersdk-ctrl {
+      transition: transform 0.3s ease, opacity 0.3s ease, margin 0.3s ease;
     }
 
     .vintage-terrain-toggle {
@@ -386,6 +445,13 @@
       .map-controls {
         left: 5px;
         top: 5px;
+        gap: 3px;
+      }
+
+      .map-controls-right {
+        right: 5px;
+        top: 5px;
+        gap: 3px;
       }
 
       .map-btn {
@@ -399,9 +465,16 @@
         padding: 10px 14px;
       }
 
-      /* Auto-collapse controls on small screens for cleaner view */
-      .map-controls {
-        gap: 3px;
+      .right-hamburger button {
+        font-size: 16px !important;
+      }
+
+      .map-controls.collapsed .map-btn:not(#toggleControlsBtn) {
+        margin-top: -50px;
+      }
+
+      .map-controls-right.collapsed .maptilersdk-ctrl:not(.right-hamburger) {
+        margin-top: -50px;
       }
 
       #stats, #elevationProfile, #trailLabels {
@@ -497,6 +570,12 @@
         gap: 2px;
       }
 
+      .map-controls-right {
+        right: 5px;
+        top: 5px;
+        gap: 2px;
+      }
+
       .map-btn {
         padding: 8px 12px;
         font-size: 11px;
@@ -505,6 +584,18 @@
       #toggleControlsBtn {
         font-size: 14px;
         padding: 8px 12px;
+      }
+
+      .right-hamburger button {
+        font-size: 14px !important;
+      }
+
+      .map-controls.collapsed .map-btn:not(#toggleControlsBtn) {
+        margin-top: -46px;
+      }
+
+      .map-controls-right.collapsed .maptilersdk-ctrl:not(.right-hamburger) {
+        margin-top: -46px;
       }
 
       #stats, #elevationProfile, #trailLabels {
@@ -1070,6 +1161,38 @@ const StravaMapApp = (function() {
       return;
     }
 
+    // Create right-side hamburger control
+    class RightHamburgerControl {
+      onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        this._container.className = 'right-hamburger maplibregl-ctrl maplibregl-ctrl-group maptilersdk-ctrl maptilersdk-ctrl-group';
+
+        this._button = document.createElement('button');
+        this._button.type = 'button';
+        this._button.setAttribute('aria-label', 'Toggle right controls');
+        this._button.textContent = '☰';
+        this._button.style.cssText = 'width: 44px; height: 44px; background: transparent; border: none; cursor: pointer; color: white; font-size: 18px; font-weight: bold;';
+
+        this._button.addEventListener('click', () => {
+          const wrapper = document.querySelector('.map-controls-right');
+          if (wrapper) {
+            const isCollapsed = wrapper.classList.toggle('collapsed');
+            this._button.textContent = isCollapsed ? '☰' : '✕';
+          }
+        });
+
+        this._container.appendChild(this._button);
+        return this._container;
+      }
+
+      onRemove() {
+        this._container?.remove();
+        this._map = undefined;
+      }
+    }
+
+    // Create terrain toggle control
     class TerrainToggleControl {
       onAdd(map) {
         this._map = map;
@@ -1099,8 +1222,22 @@ const StravaMapApp = (function() {
       }
     }
 
+    // Add right hamburger first
+    const rightHamburger = new RightHamburgerControl();
+    state.map.addControl(rightHamburger, 'top-right');
+
+    // Then add terrain toggle
     state.terrainToggleControl = new TerrainToggleControl();
     state.map.addControl(state.terrainToggleControl, 'top-right');
+
+    // Wrap the controls in a container for collapse functionality
+    setTimeout(() => {
+      const topRightControls = document.querySelector('.maplibregl-ctrl-top-right, .maptilersdk-ctrl-top-right');
+      if (topRightControls && !topRightControls.classList.contains('map-controls-right')) {
+        topRightControls.classList.add('map-controls-right');
+      }
+    }, 100);
+
     updateTerrainButtonState();
   }
 
@@ -1679,12 +1816,11 @@ const StravaMapApp = (function() {
       }
     });
 
-    // Toggle controls visibility
+    // Toggle left controls visibility (hamburger always visible)
     elements.toggleControlsBtn.addEventListener('click', () => {
       const controls = elements.mapControls;
       const isCollapsed = controls.classList.toggle('collapsed');
       elements.toggleControlsBtn.textContent = isCollapsed ? '☰' : '✕';
-      elements.toggleControlsBtn.classList.toggle('collapsed', isCollapsed);
     });
 
     // Custom fullscreen mode (works better on mobile)
@@ -1837,10 +1973,23 @@ const StravaMapApp = (function() {
     
     initMap();
     setupEventListeners();
-    
+
     // Set default date range to June 2024
     elements.startDate.value = '2024-06-01';
     elements.endDate.value = '2024-06-30';
+
+    // Auto-collapse controls on mobile for cleaner initial view
+    if (window.innerWidth <= 768) {
+      setTimeout(() => {
+        elements.mapControls.classList.add('collapsed');
+        elements.toggleControlsBtn.textContent = '☰';
+
+        const rightControls = document.querySelector('.map-controls-right');
+        if (rightControls) {
+          rightControls.classList.add('collapsed');
+        }
+      }, 500);
+    }
   }
   
   return {
