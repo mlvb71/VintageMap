@@ -2,33 +2,147 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
   <title>Vintage Strava Route Maps</title>
   <link rel="preconnect" href="https://cdn.maptiler.com">
   <link rel="dns-prefetch" href="https://api.maptiler.com">
   <script src="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.2/maptiler-sdk.umd.min.js"></script>
   <link href="https://cdn.maptiler.com/maptiler-sdk-js/v2.2.2/maptiler-sdk.css" rel="stylesheet">
   <style>
-    body { margin: 0; padding: 20px; font-family: Georgia, serif; background: #f4e4c1; }
-    h1 { text-align: center; color: #654321; margin-bottom: 10px; }
-    .upload { text-align: center; padding: 20px; background: white; border: 2px solid #8b4513; border-radius: 8px; margin-bottom: 20px; position: relative; }
-    input[type="file"] { padding: 10px; border: 2px solid #8b4513; border-radius: 8px; font-size: 16px; }
-    .btn { padding: 10px 20px; background: #8b4513; color: white; border: none; border-radius: 5px; cursor: pointer; font-family: Georgia, serif; margin: 0 5px; }
-    .btn:hover { background: #654321; }
-    .btn.strava { background: #FC4C02; }
-    .btn.strava:hover { background: #e03e00; }
-    .loading { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 2px solid #8b4513; border-radius: 5px; z-index: 1000; }
+    /* Base styles with mobile-first approach */
+    :root {
+      --color-primary: #8b4513;
+      --color-primary-dark: #654321;
+      --color-secondary: #FC4C02;
+      --color-bg: #f4e4c1;
+      --color-white: #ffffff;
+      --border-radius: 8px;
+      --touch-target-min: 44px;
+    }
+
+    * {
+      -webkit-tap-highlight-color: rgba(0,0,0,0);
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      margin: 0;
+      padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
+      font-family: Georgia, serif;
+      background: var(--color-bg);
+      touch-action: manipulation;
+    }
+
+    h1 {
+      text-align: center;
+      color: var(--color-primary-dark);
+      margin-bottom: 10px;
+      font-size: clamp(1.25rem, 5vw, 2rem);
+    }
+
+    .upload {
+      text-align: center;
+      padding: clamp(10px, 3vw, 20px);
+      background: var(--color-white);
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      margin-bottom: 15px;
+      position: relative;
+    }
+
+    input[type="file"] {
+      padding: 12px;
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      font-size: 16px;
+      min-height: var(--touch-target-min);
+      width: 100%;
+      max-width: 300px;
+      box-sizing: border-box;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      background: var(--color-primary);
+      color: var(--color-white);
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      margin: 5px;
+      font-size: 16px;
+      min-height: var(--touch-target-min);
+      min-width: var(--touch-target-min);
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .btn:active {
+      background: var(--color-primary-dark);
+      transform: scale(0.98);
+    }
+
+    .btn.strava { background: var(--color-secondary); }
+    .btn.strava:active { background: #e03e00; }
+
+    .loading {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--color-white);
+      padding: 20px;
+      border: 2px solid var(--color-primary);
+      border-radius: 5px;
+      z-index: 10000;
+      max-width: 90vw;
+      text-align: center;
+    }
     .loading.active { display: block; }
-    #map { width: 100%; height: calc(100vh - 180px); border: 4px solid #8b4513; border-radius: 8px; position: relative; }
-    
-    /* Map buttons - moved to LEFT side, upper position */
-    .map-btn { position: absolute; left: 10px; z-index: 1000; padding: 10px 20px; background: #8b4513; color: white; border: none; border-radius: 5px; cursor: pointer; font-family: Georgia, serif; font-size: 14px; }
-    .map-btn:hover { background: #654321; }
+
+    #map {
+      width: 100%;
+      height: calc(100vh - 220px);
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      position: relative;
+      min-height: 400px;
+    }
+
+    /* Map buttons - optimized for touch */
+    .map-btn {
+      position: absolute;
+      left: 10px;
+      z-index: 1000;
+      padding: 12px 16px;
+      background: var(--color-primary);
+      color: var(--color-white);
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      min-height: var(--touch-target-min);
+      min-width: var(--touch-target-min);
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      white-space: nowrap;
+    }
+
+    .map-btn:active {
+      background: var(--color-primary-dark);
+      transform: scale(0.95);
+    }
+
     #fullscreenBtn { top: 10px; }
-    #toggleElevation { top: 60px; }
-    #toggleStats { top: 110px; }
-    #toggleLabels { top: 160px; }
-    #toggleMapStyle { top: 210px; }
+    #toggleElevation { top: 64px; }
+    #toggleStats { top: 118px; }
+    #toggleLabels { top: 172px; }
+    #toggleMapStyle { top: 226px; }
 
     .vintage-terrain-toggle {
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
@@ -37,54 +151,325 @@
     }
 
     .terrain-toggle-button {
-      width: 32px;
-      height: 32px;
+      width: 44px;
+      height: 44px;
       font-family: Georgia, serif;
       font-weight: bold;
       font-size: 14px;
       border: none;
       background: rgba(255, 255, 255, 0.95);
-      color: #654321;
+      color: var(--color-primary-dark);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
+      touch-action: manipulation;
     }
 
-    .terrain-toggle-button:hover,
+    .terrain-toggle-button:active,
     .terrain-toggle-button.is-active {
-      background: #8b4513;
-      color: #ffffff;
+      background: var(--color-primary);
+      color: var(--color-white);
     }
 
     .terrain-toggle-button:focus {
-      outline: 2px solid #8b4513;
+      outline: 2px solid var(--color-primary);
       outline-offset: 1px;
     }
 
-    #trailLabels { position: absolute; top: 210px; right: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px; border: 2px solid #8b4513; border-radius: 8px; max-width: 300px; max-height: 400px; overflow-y: auto; display: none; }
-    .trail-label-item { margin: 5px 0; padding: 8px; background: #f9f9f9; border: 1px solid #8b4513; border-radius: 5px; font-size: 12px; }
-    #stats { position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 15px 20px; border: 2px solid #8b4513; border-radius: 8px; font-size: 14px; width: 280px; display: none; }
-    #stats h3 { margin: 0 0 10px 0; color: #654321; }
-    #stats .stat-line { margin: 5px 0; color: #654321; }
-    
-    /* Enhanced elevation profile - full width with proper sizing */
-    #elevationProfile { position: absolute; bottom: 20px; right: 20px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 20px; border: 2px solid #8b4513; border-radius: 8px; width: 600px; display: none; }
-    #elevationProfile h3 { margin: 0 0 15px 0; color: #654321; font-size: 16px; }
-    #elevationCanvas { width: 100%; height: 200px; background: #f9f9f9; border: 1px solid #8b4513; display: block; }
-    
-    .strava-section { margin-top: 20px; padding-top: 20px; border-top: 2px solid #8b4513; }
+    #trailLabels {
+      position: absolute;
+      top: 210px;
+      right: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.98);
+      padding: 15px;
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      max-width: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .trail-label-item {
+      margin: 5px 0;
+      padding: 10px;
+      background: #f9f9f9;
+      border: 1px solid var(--color-primary);
+      border-radius: 5px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    #stats {
+      position: absolute;
+      bottom: 20px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.98);
+      padding: 15px;
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      font-size: 14px;
+      width: 280px;
+      display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    #stats h3 { margin: 0 0 10px 0; color: var(--color-primary-dark); }
+    #stats .stat-line { margin: 5px 0; color: var(--color-primary-dark); }
+
+    /* Enhanced elevation profile */
+    #elevationProfile {
+      position: absolute;
+      bottom: 20px;
+      right: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.98);
+      padding: 15px;
+      border: 2px solid var(--color-primary);
+      border-radius: var(--border-radius);
+      width: 600px;
+      max-width: calc(100vw - 40px);
+      display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    #elevationProfile h3 {
+      margin: 0 0 15px 0;
+      color: var(--color-primary-dark);
+      font-size: 16px;
+    }
+
+    #elevationCanvas {
+      width: 100%;
+      height: 200px;
+      background: #f9f9f9;
+      border: 1px solid var(--color-primary);
+      display: block;
+      touch-action: pan-x pan-y;
+    }
+
+    .strava-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 2px solid var(--color-primary);
+    }
+
     #activitySelector { display: none; margin-top: 20px; }
-    #dateRangeSelector { margin-bottom: 15px; padding: 10px; background: #f9f9f9; border: 1px solid #8b4513; border-radius: 5px; }
-    #activityList { max-height: 300px; overflow-y: auto; border: 1px solid #8b4513; padding: 10px; background: white; border-radius: 5px; }
-    .activity-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; }
-    .activity-item:hover { background: #f0f0f0; }
-    .activity-item label { display: flex; align-items: center; cursor: pointer; }
-    .activity-item input { margin-right: 10px; }
-    @media (max-width: 768px) {
-      .map-btn { padding: 12px 24px; font-size: 16px; }
-      #elevationProfile { width: 90%; right: 5%; }
-      #stats { width: 90%; left: 5%; }
+
+    #dateRangeSelector {
+      margin-bottom: 15px;
+      padding: 15px;
+      background: #f9f9f9;
+      border: 1px solid var(--color-primary);
+      border-radius: 5px;
+    }
+
+    #dateRangeSelector label {
+      display: block;
+      margin: 10px 0;
+    }
+
+    #dateRangeSelector input[type="date"] {
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid var(--color-primary);
+      border-radius: 5px;
+      min-height: var(--touch-target-min);
+      width: 100%;
+      max-width: 200px;
+      box-sizing: border-box;
+    }
+
+    #activityList {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--color-primary);
+      padding: 10px;
+      background: var(--color-white);
+      border-radius: 5px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .activity-item {
+      margin: 10px 0;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #f9f9f9;
+      min-height: var(--touch-target-min);
+    }
+
+    .activity-item:active { background: #f0f0f0; }
+
+    .activity-item label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      min-height: var(--touch-target-min);
+      padding: 5px 0;
+    }
+
+    .activity-item input[type="checkbox"] {
+      margin-right: 12px;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    /* Mobile breakpoints */
+
+    /* Small phones (320px - 480px) */
+    @media (max-width: 480px) {
+      body { padding: env(safe-area-inset-top, 5px) env(safe-area-inset-right, 5px) env(safe-area-inset-bottom, 5px) env(safe-area-inset-left, 5px); }
+
+      h1 { font-size: 1.25rem; margin-bottom: 5px; }
+
+      .upload { padding: 10px; margin-bottom: 10px; }
+
+      #map {
+        height: calc(100vh - 280px);
+        border-width: 2px;
+      }
+
+      .map-btn {
+        padding: 10px 12px;
+        font-size: 12px;
+        left: 5px;
+        min-width: 40px;
+      }
+
+      #fullscreenBtn { top: 5px; }
+      #toggleElevation { top: 55px; }
+      #toggleStats { top: 105px; }
+      #toggleLabels { top: 155px; }
+      #toggleMapStyle { top: 205px; }
+
+      #stats, #elevationProfile, #trailLabels {
+        position: fixed;
+        left: 5px;
+        right: 5px;
+        bottom: 5px;
+        width: auto;
+        max-width: none;
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+
+      #elevationProfile {
+        padding: 10px;
+      }
+
+      #elevationCanvas {
+        height: 150px;
+      }
+
+      #trailLabels {
+        top: auto;
+        bottom: 5px;
+        right: 5px;
+        left: 5px;
+      }
+
+      .btn {
+        padding: 10px 15px;
+        margin: 3px;
+        font-size: 14px;
+      }
+
+      #dateRangeSelector {
+        padding: 10px;
+      }
+
+      #dateRangeSelector label {
+        margin: 8px 0;
+      }
+
+      #dateRangeSelector input[type="date"] {
+        max-width: 100%;
+      }
+    }
+
+    /* Medium phones and small tablets (481px - 768px) */
+    @media (min-width: 481px) and (max-width: 768px) {
+      #map {
+        height: calc(100vh - 200px);
+      }
+
+      .map-btn {
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+
+      #stats, #elevationProfile {
+        width: auto;
+        max-width: calc(100vw - 20px);
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      #trailLabels {
+        max-width: calc(100vw - 20px);
+        right: 10px;
+      }
+    }
+
+    /* Tablets (769px - 1024px) */
+    @media (min-width: 769px) and (max-width: 1024px) {
+      #elevationProfile {
+        width: 500px;
+      }
+
+      #stats {
+        width: 250px;
+      }
+    }
+
+    /* Landscape orientation optimization */
+    @media (orientation: landscape) and (max-height: 600px) {
+      #map {
+        height: calc(100vh - 150px);
+      }
+
+      .map-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      #fullscreenBtn { top: 5px; }
+      #toggleElevation { top: 50px; }
+      #toggleStats { top: 95px; }
+      #toggleLabels { top: 140px; }
+      #toggleMapStyle { top: 185px; }
+
+      #stats, #elevationProfile, #trailLabels {
+        max-height: 50vh;
+        font-size: 12px;
+      }
+
+      #elevationCanvas {
+        height: 120px;
+      }
+
+      .upload {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 1.2rem;
+        margin: 5px 0;
+      }
+    }
+
+    /* High DPI screens */
+    @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+      .map-btn, .btn {
+        border: 1px solid rgba(0,0,0,0.1);
+      }
     }
   </style>
 </head>
@@ -1144,7 +1529,49 @@ const StravaMapApp = (function() {
   // ============================================
   // EVENT LISTENERS
   // ============================================
-  
+
+  /**
+   * Enhanced touch support for mobile devices
+   */
+  function addTouchSupport(element, callback) {
+    let touchStartTime = 0;
+    let touchMoved = false;
+
+    element.addEventListener('touchstart', (e) => {
+      touchStartTime = Date.now();
+      touchMoved = false;
+    }, { passive: true });
+
+    element.addEventListener('touchmove', () => {
+      touchMoved = true;
+    }, { passive: true });
+
+    element.addEventListener('touchend', (e) => {
+      // Only trigger if touch was quick and didn't move (tap)
+      if (!touchMoved && (Date.now() - touchStartTime) < 500) {
+        callback(e);
+      }
+    });
+
+    // Keep click event for desktop
+    element.addEventListener('click', callback);
+  }
+
+  /**
+   * Handle orientation changes on mobile devices
+   */
+  function handleOrientationChange() {
+    // Redraw elevation profile if visible
+    if (elements.elevationProfile.style.display === 'block') {
+      setTimeout(() => drawElevationProfile(), 100);
+    }
+
+    // Adjust map size
+    if (state.map) {
+      setTimeout(() => state.map.resize(), 100);
+    }
+  }
+
   function setupEventListeners() {
     // GPX file upload
     elements.gpxInput.addEventListener('change', (e) => {
@@ -1161,7 +1588,7 @@ const StravaMapApp = (function() {
         reader.readAsText(file);
       });
     });
-    
+
     // Clear all routes
     elements.clearBtn.addEventListener('click', () => {
       if (confirm('Clear all routes?')) {
@@ -1187,62 +1614,105 @@ const StravaMapApp = (function() {
         elements.trailLabels.style.display = 'none';
       }
     });
-    
-    // Map control buttons
+
+    // Map control buttons with touch support
     elements.fullscreenBtn.addEventListener('click', () => {
       if (!document.fullscreenElement) {
-        document.getElementById('map').requestFullscreen();
+        document.getElementById('map').requestFullscreen().catch(err => {
+          console.log('Fullscreen not supported:', err);
+        });
       } else {
         document.exitFullscreen();
       }
     });
-    
+
     elements.toggleElevation.addEventListener('click', () => {
       const visible = elements.elevationProfile.style.display === 'block';
+
+      // Hide other panels on mobile to avoid overlap
+      if (window.innerWidth <= 480 && !visible) {
+        elements.stats.style.display = 'none';
+        elements.trailLabels.style.display = 'none';
+      }
+
       elements.elevationProfile.style.display = visible ? 'none' : 'block';
 
       if (!visible) {
         setTimeout(() => drawElevationProfile(), 50);
       }
     });
-    
+
     elements.toggleStats.addEventListener('click', () => {
       const visible = elements.stats.style.display === 'block';
+
+      // Hide other panels on mobile to avoid overlap
+      if (window.innerWidth <= 480 && !visible) {
+        elements.elevationProfile.style.display = 'none';
+        elements.trailLabels.style.display = 'none';
+      }
+
       elements.stats.style.display = visible ? 'none' : 'block';
     });
-    
+
     elements.toggleLabels.addEventListener('click', () => {
       const visible = elements.trailLabels.style.display === 'block';
+
+      // Hide other panels on mobile to avoid overlap
+      if (window.innerWidth <= 480 && !visible) {
+        elements.elevationProfile.style.display = 'none';
+        elements.stats.style.display = 'none';
+      }
+
       elements.trailLabels.style.display = visible ? 'none' : 'block';
     });
-    
+
     // Map style toggle
     elements.toggleMapStyle.addEventListener('click', toggleMapStyle);
-    
+
     // Strava activity controls
     elements.loadDateRange.addEventListener('click', loadActivitiesForDateRange);
     elements.loadSelected.addEventListener('click', loadSelectedActivities);
-    
+
     elements.selectAll.addEventListener('click', () => {
       document.querySelectorAll('#activityList input[type="checkbox"]').forEach(cb => {
         cb.checked = true;
       });
     });
-    
+
     elements.selectNone.addEventListener('click', () => {
       document.querySelectorAll('#activityList input[type="checkbox"]').forEach(cb => {
         cb.checked = false;
       });
     });
-    
+
     // Strava connection status
     updateStravaButtons();
-    
-    // Redraw elevation profile on window resize
+
+    // Redraw elevation profile on window resize and orientation change
+    let resizeTimer;
     window.addEventListener('resize', () => {
-      if (elements.elevationProfile.style.display === 'block') {
-        drawElevationProfile();
-      }
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (elements.elevationProfile.style.display === 'block') {
+          drawElevationProfile();
+        }
+        if (state.map) {
+          state.map.resize();
+        }
+      }, 250);
+    });
+
+    // Handle orientation changes (mobile)
+    window.addEventListener('orientationchange', () => {
+      setTimeout(handleOrientationChange, 200);
+    });
+
+    // Prevent double-tap zoom on buttons (iOS Safari)
+    document.querySelectorAll('.btn, .map-btn').forEach(btn => {
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        btn.click();
+      }, { passive: false });
     });
   }
   
