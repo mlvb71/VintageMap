@@ -109,13 +109,54 @@
       border-radius: var(--border-radius);
       position: relative;
       min-height: 400px;
+      transition: height 0.3s ease, border-radius 0.3s ease;
+    }
+
+    /* Fullscreen mode */
+    body.fullscreen-mode {
+      overflow: hidden;
+    }
+
+    body.fullscreen-mode h1,
+    body.fullscreen-mode > p,
+    body.fullscreen-mode .upload {
+      display: none;
+    }
+
+    body.fullscreen-mode #map {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
+      border: none;
+      border-radius: 0;
+      z-index: 999;
+    }
+
+    /* Map button container */
+    .map-controls {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: transform 0.3s ease;
+    }
+
+    .map-controls.collapsed {
+      transform: translateX(-100%);
+    }
+
+    .map-controls.collapsed #toggleControlsBtn {
+      transform: translateX(calc(100% + 10px));
     }
 
     /* Map buttons - optimized for touch */
     .map-btn {
-      position: absolute;
-      left: 10px;
-      z-index: 1000;
       padding: 12px 16px;
       background: var(--color-primary);
       color: var(--color-white);
@@ -131,6 +172,9 @@
       user-select: none;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       white-space: nowrap;
+      display: block;
+      width: 100%;
+      text-align: left;
     }
 
     .map-btn:active {
@@ -138,11 +182,15 @@
       transform: scale(0.95);
     }
 
-    #fullscreenBtn { top: 10px; }
-    #toggleElevation { top: 64px; }
-    #toggleStats { top: 118px; }
-    #toggleLabels { top: 172px; }
-    #toggleMapStyle { top: 226px; }
+    #toggleControlsBtn {
+      background: rgba(139, 69, 19, 0.9);
+      backdrop-filter: blur(5px);
+      transition: transform 0.3s ease;
+    }
+
+    #toggleControlsBtn.collapsed {
+      background: var(--color-primary);
+    }
 
     .vintage-terrain-toggle {
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
@@ -335,18 +383,26 @@
         border-width: 2px;
       }
 
+      .map-controls {
+        left: 5px;
+        top: 5px;
+      }
+
       .map-btn {
         padding: 10px 12px;
         font-size: 12px;
-        left: 5px;
         min-width: 40px;
       }
 
-      #fullscreenBtn { top: 5px; }
-      #toggleElevation { top: 55px; }
-      #toggleStats { top: 105px; }
-      #toggleLabels { top: 155px; }
-      #toggleMapStyle { top: 205px; }
+      #toggleControlsBtn {
+        font-size: 16px;
+        padding: 10px 14px;
+      }
+
+      /* Auto-collapse controls on small screens for cleaner view */
+      .map-controls {
+        gap: 3px;
+      }
 
       #stats, #elevationProfile, #trailLabels {
         position: fixed;
@@ -435,16 +491,21 @@
         height: calc(100vh - 150px);
       }
 
-      .map-btn {
-        padding: 8px 12px;
-        font-size: 12px;
+      .map-controls {
+        left: 5px;
+        top: 5px;
+        gap: 2px;
       }
 
-      #fullscreenBtn { top: 5px; }
-      #toggleElevation { top: 50px; }
-      #toggleStats { top: 95px; }
-      #toggleLabels { top: 140px; }
-      #toggleMapStyle { top: 185px; }
+      .map-btn {
+        padding: 8px 12px;
+        font-size: 11px;
+      }
+
+      #toggleControlsBtn {
+        font-size: 14px;
+        padding: 8px 12px;
+      }
 
       #stats, #elevationProfile, #trailLabels {
         max-height: 50vh;
@@ -508,13 +569,16 @@
   <div class="loading" id="loadingIndicator">Processing...</div>
   
   <div id="map">
-    <!-- Buttons now on LEFT side -->
-    <button id="fullscreenBtn" class="map-btn">⛶ Fullscreen</button>
-    <button id="toggleElevation" class="map-btn">📈 Elevation</button>
-    <button id="toggleStats" class="map-btn">📊 Statistics</button>
-    <button id="toggleLabels" class="map-btn">🏷️ Labels</button>
-    <button id="toggleMapStyle" class="map-btn">🗺️ Streets</button>
-    
+    <!-- Collapsible controls on LEFT side -->
+    <div class="map-controls" id="mapControls">
+      <button id="toggleControlsBtn" class="map-btn" title="Show/Hide Controls">☰</button>
+      <button id="fullscreenBtn" class="map-btn">⛶ Fullscreen</button>
+      <button id="toggleElevation" class="map-btn">📈 Elevation</button>
+      <button id="toggleStats" class="map-btn">📊 Statistics</button>
+      <button id="toggleLabels" class="map-btn">🏷️ Labels</button>
+      <button id="toggleMapStyle" class="map-btn">🗺️ Streets</button>
+    </div>
+
     <div id="stats">
       <h3>Route Statistics</h3>
       <div id="statsContent"></div>
@@ -1615,14 +1679,31 @@ const StravaMapApp = (function() {
       }
     });
 
-    // Map control buttons with touch support
+    // Toggle controls visibility
+    elements.toggleControlsBtn.addEventListener('click', () => {
+      const controls = elements.mapControls;
+      const isCollapsed = controls.classList.toggle('collapsed');
+      elements.toggleControlsBtn.textContent = isCollapsed ? '☰' : '✕';
+      elements.toggleControlsBtn.classList.toggle('collapsed', isCollapsed);
+    });
+
+    // Custom fullscreen mode (works better on mobile)
     elements.fullscreenBtn.addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        document.getElementById('map').requestFullscreen().catch(err => {
-          console.log('Fullscreen not supported:', err);
-        });
-      } else {
-        document.exitFullscreen();
+      const isFullscreen = document.body.classList.toggle('fullscreen-mode');
+      elements.fullscreenBtn.textContent = isFullscreen ? '✕ Exit' : '⛶ Fullscreen';
+
+      // Resize map after transition
+      setTimeout(() => {
+        if (state.map) {
+          state.map.resize();
+        }
+      }, 350);
+
+      // Hide panels in fullscreen mode
+      if (isFullscreen) {
+        elements.stats.style.display = 'none';
+        elements.elevationProfile.style.display = 'none';
+        elements.trailLabels.style.display = 'none';
       }
     });
 
@@ -1750,7 +1831,7 @@ const StravaMapApp = (function() {
      'fullscreenBtn', 'toggleElevation', 'toggleStats', 'toggleLabels', 'toggleMapStyle',
      'stravaButtons', 'activitySelector', 'activityList', 'activitySummary',
      'loadSelected', 'selectAll', 'selectNone', 'startDate', 'endDate',
-     'loadDateRange'].forEach(id => {
+     'loadDateRange', 'mapControls', 'toggleControlsBtn'].forEach(id => {
       elements[id] = document.getElementById(id);
     });
     
